@@ -7,15 +7,11 @@ fn main() -> Result<()> {
 
 	let conn = match get_db_connection(db_name) {
 		Ok(conn) => conn,
-		Err(e) => {
-			panic!("Error: {}", e);
-		},
+		Err(e) => panic!("Error: {}", e),
 	};
 	let max_id = match fetch_table_max_id("todos", &conn) {
 		Ok(id) => id,
-		Err(e) => {
-			panic!("Error: {}", e);
-		},
+		Err(e) => panic!("Error: {}", e),
 	};
 
 	println!("Max ID: {}", max_id);
@@ -58,20 +54,14 @@ fn get_db_connection(db_name: &String) -> Result<Connection> {
 fn fetch_table_max_id(table_name: &str, conn: &Connection) -> Result<i64> {
 	let mut stmt = match conn.prepare(&format!("SELECT MAX(ID) as MAX FROM {};", table_name)) {
 		Ok(stmt) => stmt,
-		Err(e) => {
-			panic!("Error preparing statement: {}", e);
-		},
+		Err(e) => panic!("Error preparing statement: {}", e),
 	};
 	let mut rows = stmt.query([])?;
 
 	let row = match rows.next() {
 		Ok(Some(row)) => row,
-		Ok(None) => {
-			panic!("Error: no rows found");
-		},
-		Err(e) => {
-			panic!("Error: no rows found: {}", e);
-		},
+		Ok(None) => panic!("Error: no rows found"),
+		Err(e) => panic!("Error: no rows found: {}", e),
 	};
 
 	let max_id = match row.get::<_, i64>(0) {
@@ -126,12 +116,8 @@ fn insert_todo_values(start_count: i64, conn: &Connection) -> Result<()> {
 		);
 
 		match result {
-			Ok(_) => {
-				println!("Added todo: {}", name);
-			},
-			Err(e) => {
-				panic!("Error: {}", e);
-			},
+			Ok(_) => println!("Added todo: {}", name),
+			Err(e) => panic!("Error: {}", e),
 		}
 
 		count += 1;
