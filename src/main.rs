@@ -11,25 +11,10 @@ fn main() -> Result<()> {
             panic!("Error: {}", e);
         }
     };
-
-    let mut stmt = conn.prepare("SELECT MAX(ID) as MAX FROM todos;")?;
-    let mut rows = stmt.query([])?;
-
-    let row = match rows.next() {
-        Ok(Some(row)) => row,
-        Ok(None) => {
-            panic!("Error: no rows found");
-        }
-        Err(e) => {
-            panic!("Error: no rows found: {}", e);
-        }
-    };
-
-    let max_id = match row.get::<_, i64>(0) {
+    let max_id = match fetch_table_max_id("todos", &conn) {
         Ok(id) => id,
         Err(e) => {
-            println!("Error: max_id{}", e);
-            0
+            panic!("Error: {}", e);
         }
     };
 
@@ -42,21 +27,19 @@ fn main() -> Result<()> {
         count += 1;
         let name = format!("TODO-{}", count);
 
-        conn.execute(
-            "
-                INSERT INTO todos
-                    (
-                        id,
-                        label
-                    ) VALUES (
-                        ?1,
-                        ?2
-                    )
-            ",
-            params![&count, &name],
-        )?;
+        let result = add_todo(&Todo {
+            id: count,
+            label: name.clone(),
+        }, &conn);
 
-        println!("Inserted '{}'", name);
+        match result {
+            Ok(_) => {
+                println!("Added todo: {}", name);
+            }
+            Err(e) => {
+                panic!("Error: {}", e);
+            }
+        }
 
         std::thread::sleep(std::time::Duration::from_secs(5));
     }
@@ -93,4 +76,61 @@ fn get_db_connection(db_name: &String) -> Result<Connection> {
     conn.execute_batch(init_sql)?;
 
     Ok(conn)
+}
+
+fn fetch_table_max_id(table_name: &str, conn: &Connection) -> Result<i64> {
+    let mut stmt = match conn.prepare(&format!("SELECT MAX(ID) as MAX FROM {};", table_name)) {
+        Ok(stmt) => stmt,
+        Err(e) => {
+            panic!("Error preparing statement: {}", e);
+        }
+    };
+    let mut rows = stmt.query([])?;
+
+    let row = match rows.next() {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            panic!("Error: no rows found");
+        }
+        Err(e) => {
+            panic!("Error: no rows found: {}", e);
+        }
+    };
+
+    let max_id = match row.get::<_, i64>(0) {
+        Ok(id) => id,
+        Err(e) => {
+            println!("Error: max_id{}", e);
+            0
+        }
+    };
+
+    Ok(max_id)
+}
+
+
+struct Todo {
+    id: i64,
+    label: String
+}
+
+fn add_todo(todo: &Todo, conn: &Connection) -> Result<()> {
+    match conn.execute(
+        "
+            INSERT INTO todos
+            (
+                id,
+                label
+            ) VALUES (
+                ?1,
+                ?2
+            )
+        ",
+        params![todo.id, todo.label],
+    ) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            panic!("Error: {}", e);
+        }
+    }
 }
