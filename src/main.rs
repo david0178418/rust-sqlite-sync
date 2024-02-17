@@ -93,8 +93,7 @@ struct Todo {
 }
 
 fn add_todo(todo: &Todo, conn: &Connection) -> Result<()> {
-    match conn.execute(
-        "
+    match conn.execute("
             INSERT INTO todos
             (
                 id,
