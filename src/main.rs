@@ -122,7 +122,7 @@ fn insert_todo_values(start_count: i64, conn: &Connection) -> Result<()> {
         let result = add_todo(&Todo {
             id: count,
             label: name.clone(),
-        }, &conn);
+        }, conn);
 
         match result {
             Ok(_) => {
