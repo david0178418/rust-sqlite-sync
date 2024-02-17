@@ -3,32 +3,14 @@ use std::env;
 use rusqlite::{Connection, Result, params};
 
 fn main() -> Result<()> {
-    let args: Vec<String> = env::args().collect();
-    let input_db_name = String::from("test.db");
-    let db_name = args.get(1).unwrap_or(&input_db_name);
-    let db_name = if db_name.ends_with(".db") {
-        db_name.to_string()
-    } else {
-        format!("{}.db", db_name)
+    let db_name = &get_db_name(env::args().collect());
+
+    let conn = match get_db_connection(db_name)  {
+        Ok(conn) => conn,
+        Err(e) => {
+            panic!("Error: {}", e);
+        }
     };
-
-    let conn = Connection::open(db_name)?;
-
-    println!("Loading extension... ");
-
-    unsafe {
-        conn.load_extension_enable()?;
-        conn.load_extension("./crsqlite.so", Some("sqlite3_crsqlite_init"))?;
-        conn.load_extension_disable()?;
-    }
-
-    println!("Done loading extension");
-
-    // load and execute init.sql file
-    let init_sql = include_str!("init.sql");
-
-    conn.execute_batch(init_sql)?;
-
 
     let mut stmt = conn.prepare("SELECT MAX(ID) as MAX FROM todos;")?;
     let mut rows = stmt.query([])?;
@@ -78,5 +60,37 @@ fn main() -> Result<()> {
 
         std::thread::sleep(std::time::Duration::from_secs(5));
     }
+}
 
+fn get_db_name(args: Vec<String>) -> String {
+    let db_name = match args.get(1) {
+        Some(name) => name,
+        None => "test.db"
+    };
+
+    if db_name.ends_with(".db") {
+        db_name.to_string()
+    } else {
+        format!("{}.db", db_name)
+    }
+}
+
+fn get_db_connection(db_name: &String) -> Result<Connection> {
+
+    let conn = Connection::open(db_name)?;
+
+    println!("Loading extension... ");
+
+    unsafe {
+        conn.load_extension_enable()?;
+        conn.load_extension("./crsqlite.so", Some("sqlite3_crsqlite_init"))?;
+        conn.load_extension_disable()?;
+    }
+
+    // load and execute init.sql file
+    let init_sql = include_str!("init.sql");
+
+    conn.execute_batch(init_sql)?;
+
+    Ok(conn)
 }
