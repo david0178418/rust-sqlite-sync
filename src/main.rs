@@ -20,29 +20,7 @@ fn main() -> Result<()> {
 
     println!("Max ID: {}", max_id);
 
-    // insert some data on a 5 second interval until the program is killed
-    let mut count = max_id;
-
-    loop {
-        count += 1;
-        let name = format!("TODO-{}", count);
-
-        let result = add_todo(&Todo {
-            id: count,
-            label: name.clone(),
-        }, &conn);
-
-        match result {
-            Ok(_) => {
-                println!("Added todo: {}", name);
-            }
-            Err(e) => {
-                panic!("Error: {}", e);
-            }
-        }
-
-        std::thread::sleep(std::time::Duration::from_secs(5));
-    }
+    insert_todo_values(max_id + 1, &conn)
 }
 
 fn get_db_name(args: Vec<String>) -> String {
@@ -132,5 +110,31 @@ fn add_todo(todo: &Todo, conn: &Connection) -> Result<()> {
         Err(e) => {
             panic!("Error: {}", e);
         }
+    }
+}
+
+fn insert_todo_values(start_count: i64, conn: &Connection) -> Result<()> {
+    let mut count = start_count;
+
+    loop {
+        let name = format!("TODO-{}", count);
+
+        let result = add_todo(&Todo {
+            id: count,
+            label: name.clone(),
+        }, &conn);
+
+        match result {
+            Ok(_) => {
+                println!("Added todo: {}", name);
+            }
+            Err(e) => {
+                panic!("Error: {}", e);
+            }
+        }
+
+        count += 1;
+
+        std::thread::sleep(std::time::Duration::from_secs(5));
     }
 }
