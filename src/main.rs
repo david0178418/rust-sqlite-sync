@@ -136,12 +136,12 @@ fn insert_todo_values(start_count: i64, sync_db_name: &str, conn: &Connection) -
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 struct Example {
 	table: String,
-	pk: Vec<u8>,
+	pk: String,
 	cid: String,
 	val: Val,
 	col_version: i64,
 	db_version: i64,
-	site_id: Vec<u8>,
+	site_id: String,
 	cl: i64,
 	seq: i64,
 }
@@ -152,7 +152,24 @@ fn sync(db_name: &str) {
 		Err(e) => panic!("Error: {}", e),
 	};
 
-	let mut stmt = match conn.prepare("SELECT * FROM crsql_changes") {
+	let mut stmt = match conn.prepare(
+		"
+		SELECT
+			\"table\",
+			HEX(pk) as pk,
+			cid,
+			val,
+			col_version,
+			db_version,
+			HEX(COALESCE(
+				site_id,
+				crsql_site_id()
+			)) as site_id,
+			cl,
+			seq
+		FROM crsql_changes
+	",
+	) {
 		Ok(stmt) => stmt,
 		Err(e) => panic!("Error: {}", e),
 	};
