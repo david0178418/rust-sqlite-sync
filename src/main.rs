@@ -2,7 +2,7 @@ mod queries;
 
 use core::panic;
 use queries::{add_todo, fetch_table_max_id, get_db_connection, Todo};
-use rusqlite::{named_params, Connection, Result};
+use rusqlite::{named_params, Result};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value as Val;
 use serde_rusqlite::from_rows;
@@ -13,18 +13,7 @@ use crate::queries::fetch_db_info;
 fn main() -> Result<()> {
 	let db_name = &parse_db_name(env::args().collect());
 
-	let conn = match get_db_connection(db_name) {
-		Ok(conn) => conn,
-		Err(e) => panic!("Error: {}", e),
-	};
-	let max_id = match fetch_table_max_id("todos", &conn) {
-		Ok(id) => id,
-		Err(e) => panic!("Error: {}", e),
-	};
-
-	println!("Max ID: {}", max_id);
-
-	insert_todo_values(max_id + 1, db_name, &conn)
+	insert_todo_values(db_name)
 }
 
 fn parse_db_name(args: Vec<String>) -> String {
@@ -40,8 +29,20 @@ fn parse_db_name(args: Vec<String>) -> String {
 	}
 }
 
-fn insert_todo_values(start_count: i64, sync_db_name: &str, conn: &Connection) -> Result<()> {
-	let mut count = start_count;
+fn insert_todo_values(sync_db_name: &str) -> Result<()> {
+	let conn = match get_db_connection(&String::from(sync_db_name)) {
+		Ok(conn) => conn,
+		Err(e) => panic!("Error: {}", e),
+	};
+
+	let max_id = match fetch_table_max_id("todos", &conn) {
+		Ok(id) => id,
+		Err(e) => panic!("Error: {}", e),
+	};
+
+	println!("Max ID: {}", max_id);
+
+	let mut count = max_id + 1;
 
 	loop {
 		std::thread::sleep(std::time::Duration::from_secs(5));
@@ -53,7 +54,7 @@ fn insert_todo_values(start_count: i64, sync_db_name: &str, conn: &Connection) -
 				id: count,
 				label: name.clone(),
 			},
-			conn,
+			&conn,
 		);
 
 		match result {
