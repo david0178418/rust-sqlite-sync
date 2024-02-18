@@ -1,8 +1,10 @@
 use core::panic;
-use rusqlite::{params, Connection, Result};
+use rusqlite::{named_params, params, Connection, Result};
 use serde_derive::{Deserialize, Serialize};
+use serde_json::Value;
 
 pub fn get_db_connection(db_name: &String) -> Result<Connection> {
+	println!("Opening connection to {}", db_name);
 	let conn = Connection::open(db_name)?;
 
 	println!("Loading extension... ");
@@ -98,6 +100,76 @@ pub fn fetch_db_info(conn: &Connection) -> Result<DbSyncInfo> {
 
 	match result {
 		Ok(info) => Ok(info),
+		Err(e) => panic!("Error: {}", e),
+	}
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct Change {
+	table: String,
+	pk: Vec<u8>,
+	cid: String,
+	val: Value,
+	col_version: i64,
+	db_version: i64,
+	site_id: Vec<u8>,
+	cl: i64,
+	seq: i64,
+}
+
+pub fn insert_changes(changes: &Vec<Change>, conn: &mut Connection) {
+	let tx = match conn.transaction() {
+		Ok(tx) => tx,
+		Err(e) => panic!("Error: {}", e),
+	};
+
+	for change in changes {
+		let result = tx.execute(
+			"
+				INSERT INTO crsql_changes
+				(
+					\"table\",
+					pk,
+					cid,
+					val,
+					col_version,
+					db_version,
+					site_id,
+					cl,
+					seq
+				) VALUES (
+					:table,
+					:pk,
+					:cid,
+					:val,
+					:col_version,
+					:db_version,
+					:site_id,
+					:cl,
+					:seq
+				)
+			",
+			named_params! {
+				":table": change.table,
+				":pk": change.pk,
+				":cid": change.cid,
+				":val": serde_json::to_string(&change.val).unwrap(),
+				":col_version": change.col_version,
+				":db_version": change.db_version,
+				":site_id": change.site_id,
+				":cl": change.cl,
+				":seq": change.seq,
+			},
+		);
+
+		match result {
+			Ok(_) => (),
+			Err(e) => panic!("Error: {}", e),
+		}
+	}
+
+	match tx.commit() {
+		Ok(_) => (),
 		Err(e) => panic!("Error: {}", e),
 	}
 }

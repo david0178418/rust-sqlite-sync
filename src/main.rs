@@ -1,14 +1,11 @@
 mod queries;
 
+use crate::queries::{fetch_db_info, insert_changes};
 use core::panic;
-use queries::{add_todo, fetch_table_max_id, get_db_connection, Todo};
+use queries::{add_todo, fetch_table_max_id, get_db_connection, Change, Todo};
 use rusqlite::{named_params, Result};
-use serde_derive::{Deserialize, Serialize};
-use serde_json::Value as Val;
 use serde_rusqlite::from_rows;
 use std::env;
-
-use crate::queries::fetch_db_info;
 
 fn main() -> Result<()> {
 	let db_name = &parse_db_name(env::args().collect());
@@ -64,32 +61,20 @@ fn insert_todo_values(sync_db_name: &str) -> Result<()> {
 
 		count += 1;
 
-		if (count % 5) == 0 {
-			sync(sync_db_name, &format!("{sync_db_name}-2"));
+		if (count % 2) == 0 {
+			sync(sync_db_name, &sync_db_name.replace(".db", "-sync.db"));
 		}
 	}
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct Example {
-	table: String,
-	pk: String,
-	cid: String,
-	val: Val,
-	col_version: i64,
-	db_version: i64,
-	site_id: String,
-	cl: i64,
-	seq: i64,
-}
-
 fn sync(source_db_name: &str, target_db_name: &str) {
+	println!("Syncing from {} to {}", source_db_name, target_db_name);
 	let source_db_connection = match get_db_connection(&String::from(source_db_name)) {
 		Ok(conn) => conn,
 		Err(e) => panic!("Error: {}", e),
 	};
 
-	let target_db_connection = match get_db_connection(&String::from(target_db_name)) {
+	let mut target_db_connection = match get_db_connection(&String::from(target_db_name)) {
 		Ok(conn) => conn,
 		Err(e) => panic!("Error: {}", e),
 	};
@@ -105,15 +90,15 @@ fn sync(source_db_name: &str, target_db_name: &str) {
 		"
 		SELECT
 			\"table\",
-			HEX(pk) as pk,
+			pk,
 			cid,
 			val,
 			col_version,
 			db_version,
-			HEX(COALESCE(
+			COALESCE(
 				site_id,
 				crsql_site_id()
-			)) as site_id,
+			) as site_id,
 			cl,
 			seq
 		FROM crsql_changes
@@ -135,9 +120,23 @@ fn sync(source_db_name: &str, target_db_name: &str) {
 		Err(e) => panic!("Error: {}", e),
 	};
 
-	let rows_iter = from_rows::<Example>(result);
+	let rows_iter = from_rows::<Change>(result);
 
-	let changes = rows_iter.collect::<Vec<_>>();
+	// let changes = rows_iter.collect::<Vec<_>>();
 
-	println!("Changes: {:?}", changes);
+	let changes = rows_iter
+		.map(|change| match change {
+			Ok(c) => c,
+			Err(e) => panic!("Error: {}", e),
+		})
+		.collect::<Vec<_>>();
+
+	insert_changes(&changes, &mut target_db_connection);
+
+	println!(
+		"Synced {} rows from {} to {}",
+		changes.len(),
+		source_db_name,
+		target_db_name
+	);
 }
