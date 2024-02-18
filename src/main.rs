@@ -19,13 +19,6 @@ fn main() -> Result<()> {
 
 	println!("Max ID: {}", max_id);
 
-	let db_version = match fetch_db_version(&conn) {
-		Ok(version) => version,
-		Err(e) => panic!("Error: {}", e),
-	};
-
-	println!("DB Version: {}", db_version);
-
 	insert_todo_values(max_id + 1, db_name, &conn)
 }
 
@@ -135,7 +128,7 @@ fn insert_todo_values(start_count: i64, sync_db_name: &str, conn: &Connection) -
 		count += 1;
 
 		if (count % 5) == 0 {
-			sync(sync_db_name, "", 113);
+			sync(sync_db_name, &format!("{sync_db_name}-2"));
 		}
 	}
 }
@@ -153,13 +146,25 @@ struct Example {
 	seq: i64,
 }
 
-fn sync(db_name: &str, site_id: &str, db_version: i64) {
-	let conn = match get_db_connection(&String::from(db_name)) {
+fn sync(source_db_name: &str, target_db_name: &str) {
+	let source_db_connection = match get_db_connection(&String::from(source_db_name)) {
 		Ok(conn) => conn,
 		Err(e) => panic!("Error: {}", e),
 	};
 
-	let mut stmt = match conn.prepare(
+	let target_db_connection = match get_db_connection(&String::from(target_db_name)) {
+		Ok(conn) => conn,
+		Err(e) => panic!("Error: {}", e),
+	};
+
+	let db_sync_info = match fetch_db_info(&target_db_connection) {
+		Ok(version) => version,
+		Err(e) => panic!("Error: {}", e),
+	};
+
+	println!("DB Version: {:?}", db_sync_info);
+
+	let mut stmt = match source_db_connection.prepare(
 		"
 		SELECT
 			\"table\",
@@ -184,8 +189,8 @@ fn sync(db_name: &str, site_id: &str, db_version: i64) {
 	};
 
 	let query = stmt.query(named_params! {
-		":db_version": db_version,
-		":site_id": site_id,
+		":db_version": db_sync_info.db_version,
+		":site_id": db_sync_info.site_id,
 	});
 
 	let result = match query {
@@ -200,27 +205,33 @@ fn sync(db_name: &str, site_id: &str, db_version: i64) {
 	println!("Changes: {:?}", changes);
 }
 
-fn fetch_db_version(conn: &Connection) -> Result<i64> {
-	let mut stmt = match conn.prepare("SELECT crsql_db_version();") {
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct DbSyncInfo {
+	db_version: i64,
+	site_id: String,
+}
+
+fn fetch_db_info(conn: &Connection) -> Result<DbSyncInfo> {
+	let mut stmt = match conn.prepare(
+		"
+			SELECT
+				crsql_db_version() as db_version,
+				Hex(crsql_site_id()) as site_id;
+	",
+	) {
 		Ok(stmt) => stmt,
 		Err(e) => panic!("Error: {}", e),
 	};
 
-	let mut rows = stmt.query([])?;
+	let result = stmt.query_row([], |row| {
+		Ok(DbSyncInfo {
+			db_version: row.get(0)?,
+			site_id: row.get(1)?,
+		})
+	});
 
-	let row = match rows.next() {
-		Ok(Some(row)) => row,
-		Ok(None) => panic!("Error: no rows found"),
-		Err(e) => panic!("Error: no rows found: {}", e),
-	};
-
-	let db_version = match row.get::<_, i64>(0) {
-		Ok(id) => id,
-		Err(e) => {
-			println!("Error: db_version{}", e);
-			0
-		},
-	};
-
-	Ok(db_version)
+	match result {
+		Ok(info) => Ok(info),
+		Err(e) => panic!("Error: {}", e),
+	}
 }
