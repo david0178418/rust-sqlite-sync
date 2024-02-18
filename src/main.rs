@@ -19,6 +19,13 @@ fn main() -> Result<()> {
 
 	println!("Max ID: {}", max_id);
 
+	let db_version = match fetch_db_version(&conn) {
+		Ok(version) => version,
+		Err(e) => panic!("Error: {}", e),
+	};
+
+	println!("DB Version: {}", db_version);
+
 	insert_todo_values(max_id + 1, db_name, &conn)
 }
 
@@ -108,6 +115,8 @@ fn insert_todo_values(start_count: i64, sync_db_name: &str, conn: &Connection) -
 	let mut count = start_count;
 
 	loop {
+		std::thread::sleep(std::time::Duration::from_secs(5));
+
 		let name = format!("TODO-{}", count);
 
 		let result = add_todo(
@@ -128,8 +137,6 @@ fn insert_todo_values(start_count: i64, sync_db_name: &str, conn: &Connection) -
 		if (count % 5) == 0 {
 			sync(sync_db_name, "", 113);
 		}
-
-		std::thread::sleep(std::time::Duration::from_secs(5));
 	}
 }
 
@@ -191,4 +198,29 @@ fn sync(db_name: &str, site_id: &str, db_version: i64) {
 	let changes = rows_iter.collect::<Vec<_>>();
 
 	println!("Changes: {:?}", changes);
+}
+
+fn fetch_db_version(conn: &Connection) -> Result<i64> {
+	let mut stmt = match conn.prepare("SELECT crsql_db_version();") {
+		Ok(stmt) => stmt,
+		Err(e) => panic!("Error: {}", e),
+	};
+
+	let mut rows = stmt.query([])?;
+
+	let row = match rows.next() {
+		Ok(Some(row)) => row,
+		Ok(None) => panic!("Error: no rows found"),
+		Err(e) => panic!("Error: no rows found: {}", e),
+	};
+
+	let db_version = match row.get::<_, i64>(0) {
+		Ok(id) => id,
+		Err(e) => {
+			println!("Error: db_version{}", e);
+			0
+		},
+	};
+
+	Ok(db_version)
 }
