@@ -1,9 +1,8 @@
 mod queries;
 
-use crate::queries::{fetch_db_info, insert_changes};
-use queries::{fetch_table_max_id, get_db_connection, insert_todo, Change, Todo};
-use rusqlite::{named_params, Result};
-use serde_rusqlite::from_rows;
+use crate::queries::{fetch_db_info, fetch_todos_changes, insert_todo_changes};
+use queries::{fetch_table_max_id, get_db_connection, insert_todo, Todo};
+use rusqlite::Result;
 use std::env;
 
 fn main() -> Result<()> {
@@ -66,37 +65,9 @@ fn sync(source_db_name: &str, target_db_name: &str) -> Result<()> {
 
 	println!("DB Version: {:?}", db_sync_info);
 
-	let mut stmt = source_db_connection.prepare(
-		"
-		SELECT
-			\"table\",
-			pk,
-			cid,
-			val,
-			col_version,
-			db_version,
-			COALESCE(
-				site_id,
-				crsql_site_id()
-			) as site_id,
-			cl,
-			seq
-		FROM crsql_changes
-		WHERE db_version > :db_version
-		AND site_id IS NOT :site_id;
-	",
-	)?;
+	let changes = fetch_todos_changes(&db_sync_info, &source_db_connection)?;
 
-	let result = stmt.query(named_params! {
-		":db_version": db_sync_info.db_version,
-		":site_id": db_sync_info.site_id,
-	})?;
-
-	let changes = from_rows::<Change>(result)
-		.map(|change| change.unwrap())
-		.collect::<Vec<_>>();
-
-	insert_changes(&changes, &mut target_db_connection)?;
+	insert_todo_changes(&changes, &mut target_db_connection)?;
 
 	println!(
 		"Synced {} rows from {} to {}",

@@ -2,6 +2,7 @@ use core::panic;
 use rusqlite::{named_params, params, Connection, Result};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_rusqlite::from_rows;
 
 pub fn get_db_connection(db_name: &String) -> Result<Connection> {
 	println!("Opening connection to {}", db_name);
@@ -9,18 +10,21 @@ pub fn get_db_connection(db_name: &String) -> Result<Connection> {
 
 	println!("Loading extension... ");
 
+	load_cr_extention(&conn)?;
+
+	conn.execute_batch(include_str!("init.sql"))?;
+
+	Ok(conn)
+}
+
+pub fn load_cr_extention(conn: &Connection) -> Result<()> {
 	unsafe {
 		conn.load_extension_enable()?;
 		conn.load_extension("./crsqlite.so", Some("sqlite3_crsqlite_init"))?;
 		conn.load_extension_disable()?;
 	}
 
-	// load and execute init.sql file
-	let init_sql = include_str!("init.sql");
-
-	conn.execute_batch(init_sql)?;
-
-	Ok(conn)
+	Ok(())
 }
 
 pub fn fetch_table_max_id(table_name: &str, conn: &Connection) -> Result<i64> {
@@ -44,6 +48,35 @@ pub fn fetch_table_max_id(table_name: &str, conn: &Connection) -> Result<i64> {
 	Ok(max_id)
 }
 
+#[allow(unused)]
+pub fn fetch_todos(conn: &Connection) -> Result<Vec<Todo>> {
+	let mut stmt = conn.prepare("SELECT * FROM todos;")?;
+	let todos = stmt.query_map([], |row| {
+		Ok(Todo {
+			id: row.get(0)?,
+			label: row.get(1)?,
+		})
+	})?;
+
+	let mut todo_list = Vec::new();
+
+	for todo in todos {
+		todo_list.push(todo?);
+	}
+
+	Ok(todo_list)
+}
+
+#[allow(unused)]
+pub fn fetch_todo_by_id(id: i64, conn: &Connection) -> Result<Todo> {
+	conn.query_row("SELECT * FROM todos WHERE id = ?1", params![id], |row| {
+		Ok(Todo {
+			id: row.get(0)?,
+			label: row.get(1)?,
+		})
+	})
+}
+
 pub struct Todo {
 	pub id: i64,
 	pub label: String,
@@ -60,6 +93,21 @@ pub fn insert_todo(todo: &Todo, conn: &Connection) -> Result<()> {
 				?1,
 				?2
 			)
+		",
+		params![todo.id, todo.label],
+	) {
+		Ok(_) => Ok(()),
+		Err(e) => panic!("Error: {}", e),
+	}
+}
+
+#[allow(unused)]
+pub fn update_todo(todo: &Todo, conn: &Connection) -> Result<()> {
+	match conn.execute(
+		"
+			UPDATE todos
+			SET label = ?2
+			WHERE id = ?1
 		",
 		params![todo.id, todo.label],
 	) {
@@ -103,10 +151,19 @@ pub struct Change {
 	seq: i64,
 }
 
-pub fn insert_changes(changes: &Vec<Change>, conn: &mut Connection) -> Result<()> {
+pub fn insert_todo_changes(changes: &Vec<Change>, conn: &mut Connection) -> Result<()> {
 	let tx = conn.transaction()?;
 
 	for change in changes {
+		let x = serde_json::to_string(&change.val).unwrap();
+		println!(
+			"Inserting change: {:?}",
+			match change.val.is_string() {
+				true => change.val.as_str().unwrap(),
+				false => &x,
+			}
+		);
+		let change_val = serde_json::to_string(&change.val).unwrap();
 		let result = tx.execute(
 			"
 				INSERT INTO crsql_changes
@@ -136,12 +193,16 @@ pub fn insert_changes(changes: &Vec<Change>, conn: &mut Connection) -> Result<()
 				":table": change.table,
 				":pk": change.pk,
 				":cid": change.cid,
-				":val": serde_json::to_string(&change.val).unwrap(),
 				":col_version": change.col_version,
 				":db_version": change.db_version,
 				":site_id": change.site_id,
 				":cl": change.cl,
 				":seq": change.seq,
+				":val": if change.val.is_string() {
+					change.val.as_str().unwrap()
+				} else{
+					&change_val
+				}
 			},
 		);
 
@@ -152,4 +213,121 @@ pub fn insert_changes(changes: &Vec<Change>, conn: &mut Connection) -> Result<()
 	}
 
 	tx.commit()
+}
+
+pub fn fetch_todos_changes(db_sync_info: &DbSyncInfo, conn: &Connection) -> Result<Vec<Change>> {
+	let mut stmt = conn.prepare(
+		"
+		SELECT
+			\"table\",
+			pk,
+			cid,
+			val,
+			col_version,
+			db_version,
+			COALESCE(
+				site_id,
+				crsql_site_id()
+			) as site_id,
+			cl,
+			seq
+		FROM crsql_changes
+		WHERE db_version > :db_version
+		AND site_id IS NOT :site_id;
+	",
+	)?;
+
+	let result = stmt.query(named_params! {
+		":db_version": db_sync_info.db_version,
+		":site_id": db_sync_info.site_id,
+	})?;
+
+	let changes = from_rows::<Change>(result)
+		.map(|change| change.unwrap())
+		.collect::<Vec<_>>();
+
+	Ok(changes)
+}
+
+#[cfg(test)]
+mod tests {
+
+	use crate::queries::{
+		fetch_db_info, fetch_todo_by_id, fetch_todos, fetch_todos_changes, insert_todo,
+		insert_todo_changes, load_cr_extention, update_todo, Todo,
+	};
+
+	#[test]
+	fn it_works() {
+		let mut conn_a = rusqlite::Connection::open_in_memory().unwrap();
+		let mut conn_b = rusqlite::Connection::open_in_memory().unwrap();
+
+		load_cr_extention(&conn_a).unwrap();
+		load_cr_extention(&conn_b).unwrap();
+
+		conn_a.execute_batch(include_str!("init.sql")).unwrap();
+		conn_b.execute_batch(include_str!("init.sql")).unwrap();
+
+		insert_todo(
+			&Todo {
+				id: 1,
+				label: String::from("Test A1"),
+			},
+			&conn_a,
+		)
+		.unwrap();
+
+		let todos_a = fetch_todos(&conn_a).unwrap();
+		let todos_b = fetch_todos(&conn_b).unwrap();
+
+		assert_eq!(todos_a.len(), 1);
+		assert_eq!(todos_b.len(), 0);
+
+		let db_b_sync_info = fetch_db_info(&conn_b).unwrap();
+
+		let changes_a = fetch_todos_changes(&db_b_sync_info, &conn_a).unwrap();
+
+		insert_todo_changes(&changes_a, &mut conn_b).unwrap();
+
+		let todos_b = fetch_todos(&conn_b).unwrap();
+
+		assert_eq!(todos_b.len(), 1);
+
+		insert_todo(
+			&Todo {
+				id: 2,
+				label: String::from("Test B1"),
+			},
+			&conn_b,
+		)
+		.unwrap();
+
+		let db_b_sync_info = fetch_db_info(&conn_a).unwrap();
+
+		let changes_b = fetch_todos_changes(&db_b_sync_info, &conn_b).unwrap();
+
+		insert_todo_changes(&changes_b, &mut conn_a).unwrap();
+
+		let todos_a = fetch_todos(&conn_a).unwrap();
+
+		assert_eq!(todos_a.len(), 2);
+
+		update_todo(
+			&Todo {
+				id: 1,
+				label: String::from("Test A1 Updated from B"),
+			},
+			&conn_b,
+		)
+		.unwrap();
+
+		let db_a_sync_info = fetch_db_info(&conn_a).unwrap();
+		let changes_b = fetch_todos_changes(&db_a_sync_info, &conn_b).unwrap();
+
+		insert_todo_changes(&changes_b, &mut conn_a).unwrap();
+
+		let first_todo = fetch_todo_by_id(1, &conn_a).unwrap();
+
+		assert_eq!(first_todo.label, "Test A1 Updated from B");
+	}
 }
