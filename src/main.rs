@@ -11,7 +11,7 @@ use std::env;
 use crate::queries::fetch_db_info;
 
 fn main() -> Result<()> {
-	let db_name = &get_db_name(env::args().collect());
+	let db_name = &parse_db_name(env::args().collect());
 
 	let conn = match get_db_connection(db_name) {
 		Ok(conn) => conn,
@@ -27,7 +27,7 @@ fn main() -> Result<()> {
 	insert_todo_values(max_id + 1, db_name, &conn)
 }
 
-fn get_db_name(args: Vec<String>) -> String {
+fn parse_db_name(args: Vec<String>) -> String {
 	let db_name = match args.get(1) {
 		Some(name) => name,
 		None => "test.db",
