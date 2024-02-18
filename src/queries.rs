@@ -215,7 +215,7 @@ pub fn insert_todo_changes(changes: &Vec<Change>, conn: &mut Connection) -> Resu
 	tx.commit()
 }
 
-pub fn fetch_todos_changes(db_sync_info: &DbSyncInfo, conn: &Connection) -> Result<Vec<Change>> {
+pub fn fetch_db_changes(db_sync_info: &DbSyncInfo, conn: &Connection) -> Result<Vec<Change>> {
 	let mut stmt = conn.prepare(
 		"
 		SELECT
@@ -253,20 +253,23 @@ pub fn fetch_todos_changes(db_sync_info: &DbSyncInfo, conn: &Connection) -> Resu
 mod tests {
 
 	use crate::queries::{
-		fetch_db_info, fetch_todo_by_id, fetch_todos, fetch_todos_changes, insert_todo,
+		fetch_db_changes, fetch_db_info, fetch_todo_by_id, fetch_todos, insert_todo,
 		insert_todo_changes, load_cr_extention, update_todo, Todo,
 	};
 
+	fn setup_connection() -> rusqlite::Connection {
+		let conn = rusqlite::Connection::open_in_memory().unwrap();
+
+		load_cr_extention(&conn).unwrap();
+
+		conn.execute_batch(include_str!("init.sql")).unwrap();
+		conn
+	}
+
 	#[test]
-	fn it_works() {
-		let mut conn_a = rusqlite::Connection::open_in_memory().unwrap();
-		let mut conn_b = rusqlite::Connection::open_in_memory().unwrap();
-
-		load_cr_extention(&conn_a).unwrap();
-		load_cr_extention(&conn_b).unwrap();
-
-		conn_a.execute_batch(include_str!("init.sql")).unwrap();
-		conn_b.execute_batch(include_str!("init.sql")).unwrap();
+	fn test_sync() {
+		let mut conn_a = setup_connection();
+		let mut conn_b = setup_connection();
 
 		insert_todo(
 			&Todo {
@@ -285,7 +288,7 @@ mod tests {
 
 		let db_b_sync_info = fetch_db_info(&conn_b).unwrap();
 
-		let changes_a = fetch_todos_changes(&db_b_sync_info, &conn_a).unwrap();
+		let changes_a = fetch_db_changes(&db_b_sync_info, &conn_a).unwrap();
 
 		insert_todo_changes(&changes_a, &mut conn_b).unwrap();
 
@@ -304,7 +307,7 @@ mod tests {
 
 		let db_b_sync_info = fetch_db_info(&conn_a).unwrap();
 
-		let changes_b = fetch_todos_changes(&db_b_sync_info, &conn_b).unwrap();
+		let changes_b = fetch_db_changes(&db_b_sync_info, &conn_b).unwrap();
 
 		insert_todo_changes(&changes_b, &mut conn_a).unwrap();
 
@@ -322,7 +325,7 @@ mod tests {
 		.unwrap();
 
 		let db_a_sync_info = fetch_db_info(&conn_a).unwrap();
-		let changes_b = fetch_todos_changes(&db_a_sync_info, &conn_b).unwrap();
+		let changes_b = fetch_db_changes(&db_a_sync_info, &conn_b).unwrap();
 
 		insert_todo_changes(&changes_b, &mut conn_a).unwrap();
 
