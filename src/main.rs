@@ -1,6 +1,6 @@
 mod queries;
 
-use crate::queries::{fetch_db_changes, fetch_db_info, insert_todo_changes};
+use crate::queries::{fetch_db_changes, fetch_db_info, insert_db_changes};
 use queries::{fetch_table_max_id, get_db_connection, insert_todo, Todo};
 use rusqlite::Result;
 use std::env;
@@ -67,7 +67,7 @@ fn sync(source_db_name: &str, target_db_name: &str) -> Result<()> {
 
 	let changes = fetch_db_changes(&db_sync_info, &source_db_connection)?;
 
-	insert_todo_changes(&changes, &mut target_db_connection)?;
+	insert_db_changes(&changes, &mut target_db_connection)?;
 
 	println!(
 		"Synced {} rows from {} to {}",

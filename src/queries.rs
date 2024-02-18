@@ -151,7 +151,7 @@ pub struct Change {
 	seq: i64,
 }
 
-pub fn insert_todo_changes(changes: &Vec<Change>, conn: &mut Connection) -> Result<()> {
+pub fn insert_db_changes(changes: &Vec<Change>, conn: &mut Connection) -> Result<()> {
 	let tx = conn.transaction()?;
 
 	for change in changes {
@@ -216,6 +216,7 @@ pub fn insert_todo_changes(changes: &Vec<Change>, conn: &mut Connection) -> Resu
 }
 
 pub fn fetch_db_changes(db_sync_info: &DbSyncInfo, conn: &Connection) -> Result<Vec<Change>> {
+	println!("Fetching changes for {:?}", db_sync_info);
 	let mut stmt = conn.prepare(
 		"
 		SELECT
@@ -253,16 +254,16 @@ pub fn fetch_db_changes(db_sync_info: &DbSyncInfo, conn: &Connection) -> Result<
 mod tests {
 
 	use crate::queries::{
-		fetch_db_changes, fetch_db_info, fetch_todo_by_id, fetch_todos, insert_todo,
-		insert_todo_changes, load_cr_extention, update_todo, Todo,
+		fetch_db_changes, fetch_db_info, fetch_todo_by_id, fetch_todos, insert_db_changes,
+		insert_todo, load_cr_extention, update_todo, Todo,
 	};
 
 	fn setup_connection() -> rusqlite::Connection {
 		let conn = rusqlite::Connection::open_in_memory().unwrap();
 
 		load_cr_extention(&conn).unwrap();
-
 		conn.execute_batch(include_str!("init.sql")).unwrap();
+
 		conn
 	}
 
@@ -287,10 +288,9 @@ mod tests {
 		assert_eq!(todos_b.len(), 0);
 
 		let db_b_sync_info = fetch_db_info(&conn_b).unwrap();
-
 		let changes_a = fetch_db_changes(&db_b_sync_info, &conn_a).unwrap();
 
-		insert_todo_changes(&changes_a, &mut conn_b).unwrap();
+		insert_db_changes(&changes_a, &mut conn_b).unwrap();
 
 		let todos_b = fetch_todos(&conn_b).unwrap();
 
@@ -306,10 +306,9 @@ mod tests {
 		.unwrap();
 
 		let db_b_sync_info = fetch_db_info(&conn_a).unwrap();
-
 		let changes_b = fetch_db_changes(&db_b_sync_info, &conn_b).unwrap();
 
-		insert_todo_changes(&changes_b, &mut conn_a).unwrap();
+		insert_db_changes(&changes_b, &mut conn_a).unwrap();
 
 		let todos_a = fetch_todos(&conn_a).unwrap();
 
@@ -327,7 +326,7 @@ mod tests {
 		let db_a_sync_info = fetch_db_info(&conn_a).unwrap();
 		let changes_b = fetch_db_changes(&db_a_sync_info, &conn_b).unwrap();
 
-		insert_todo_changes(&changes_b, &mut conn_a).unwrap();
+		insert_db_changes(&changes_b, &mut conn_a).unwrap();
 
 		let first_todo = fetch_todo_by_id(1, &conn_a).unwrap();
 
