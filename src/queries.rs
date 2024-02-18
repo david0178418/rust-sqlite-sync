@@ -24,10 +24,7 @@ pub fn get_db_connection(db_name: &String) -> Result<Connection> {
 }
 
 pub fn fetch_table_max_id(table_name: &str, conn: &Connection) -> Result<i64> {
-	let mut stmt = match conn.prepare(&format!("SELECT MAX(ID) as MAX FROM {};", table_name)) {
-		Ok(stmt) => stmt,
-		Err(e) => panic!("Error preparing statement: {}", e),
-	};
+	let mut stmt = conn.prepare(&format!("SELECT MAX(ID) as MAX FROM {};", table_name))?;
 	let mut rows = stmt.query([])?;
 
 	let row = match rows.next() {
@@ -52,7 +49,7 @@ pub struct Todo {
 	pub label: String,
 }
 
-pub fn add_todo(todo: &Todo, conn: &Connection) -> Result<()> {
+pub fn insert_todo(todo: &Todo, conn: &Connection) -> Result<()> {
 	match conn.execute(
 		"
 			INSERT INTO todos
@@ -67,9 +64,7 @@ pub fn add_todo(todo: &Todo, conn: &Connection) -> Result<()> {
 		params![todo.id, todo.label],
 	) {
 		Ok(_) => Ok(()),
-		Err(e) => {
-			panic!("Error: {}", e);
-		},
+		Err(e) => panic!("Error: {}", e),
 	}
 }
 
@@ -80,28 +75,19 @@ pub struct DbSyncInfo {
 }
 
 pub fn fetch_db_info(conn: &Connection) -> Result<DbSyncInfo> {
-	let mut stmt = match conn.prepare(
+	conn.prepare(
 		"
 			SELECT
 				crsql_db_version() as db_version,
 				Hex(crsql_site_id()) as site_id;
-	",
-	) {
-		Ok(stmt) => stmt,
-		Err(e) => panic!("Error: {}", e),
-	};
-
-	let result = stmt.query_row([], |row| {
+		",
+	)?
+	.query_row([], |row| {
 		Ok(DbSyncInfo {
 			db_version: row.get(0)?,
 			site_id: row.get(1)?,
 		})
-	});
-
-	match result {
-		Ok(info) => Ok(info),
-		Err(e) => panic!("Error: {}", e),
-	}
+	})
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -117,11 +103,8 @@ pub struct Change {
 	seq: i64,
 }
 
-pub fn insert_changes(changes: &Vec<Change>, conn: &mut Connection) {
-	let tx = match conn.transaction() {
-		Ok(tx) => tx,
-		Err(e) => panic!("Error: {}", e),
-	};
+pub fn insert_changes(changes: &Vec<Change>, conn: &mut Connection) -> Result<()> {
+	let tx = conn.transaction()?;
 
 	for change in changes {
 		let result = tx.execute(
@@ -168,8 +151,5 @@ pub fn insert_changes(changes: &Vec<Change>, conn: &mut Connection) {
 		}
 	}
 
-	match tx.commit() {
-		Ok(_) => (),
-		Err(e) => panic!("Error: {}", e),
-	}
+	tx.commit()
 }
