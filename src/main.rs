@@ -61,7 +61,7 @@ fn insert_todo_values(sync_db_name: &str) -> Result<()> {
 
 		count += 1;
 
-		if (count % 2) == 0 {
+		if (count % 3) == 0 {
 			sync(sync_db_name, &sync_db_name.replace(".db", "-sync.db"));
 		}
 	}
