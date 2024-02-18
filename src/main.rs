@@ -1,5 +1,5 @@
 use core::panic;
-use rusqlite::{params, Connection, Result};
+use rusqlite::{named_params, params, Connection, Result};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value as Val;
 use serde_rusqlite::from_rows;
@@ -126,7 +126,7 @@ fn insert_todo_values(start_count: i64, sync_db_name: &str, conn: &Connection) -
 		count += 1;
 
 		if (count % 5) == 0 {
-			sync(sync_db_name);
+			sync(sync_db_name, "", 113);
 		}
 
 		std::thread::sleep(std::time::Duration::from_secs(5));
@@ -146,7 +146,7 @@ struct Example {
 	seq: i64,
 }
 
-fn sync(db_name: &str) {
+fn sync(db_name: &str, site_id: &str, db_version: i64) {
 	let conn = match get_db_connection(&String::from(db_name)) {
 		Ok(conn) => conn,
 		Err(e) => panic!("Error: {}", e),
@@ -168,13 +168,25 @@ fn sync(db_name: &str) {
 			cl,
 			seq
 		FROM crsql_changes
+		WHERE db_version > :db_version
+		AND site_id IS NOT :site_id;
 	",
 	) {
 		Ok(stmt) => stmt,
 		Err(e) => panic!("Error: {}", e),
 	};
 
-	let rows_iter = from_rows::<Example>(stmt.query([]).unwrap());
+	let query = stmt.query(named_params! {
+		":db_version": db_version,
+		":site_id": site_id,
+	});
+
+	let result = match query {
+		Ok(r) => r,
+		Err(e) => panic!("Error: {}", e),
+	};
+
+	let rows_iter = from_rows::<Example>(result);
 
 	let changes = rows_iter.collect::<Vec<_>>();
 
