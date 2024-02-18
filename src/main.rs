@@ -1,5 +1,8 @@
 use core::panic;
 use rusqlite::{params, Connection, Result};
+use serde_derive::{Deserialize, Serialize};
+use serde_json::Value as Val;
+use serde_rusqlite::from_rows;
 use std::env;
 
 fn main() -> Result<()> {
@@ -16,7 +19,7 @@ fn main() -> Result<()> {
 
 	println!("Max ID: {}", max_id);
 
-	insert_todo_values(max_id + 1, &conn)
+	insert_todo_values(max_id + 1, db_name, &conn)
 }
 
 fn get_db_name(args: Vec<String>) -> String {
@@ -101,7 +104,7 @@ fn add_todo(todo: &Todo, conn: &Connection) -> Result<()> {
 	}
 }
 
-fn insert_todo_values(start_count: i64, conn: &Connection) -> Result<()> {
+fn insert_todo_values(start_count: i64, sync_db_name: &str, conn: &Connection) -> Result<()> {
 	let mut count = start_count;
 
 	loop {
@@ -122,6 +125,41 @@ fn insert_todo_values(start_count: i64, conn: &Connection) -> Result<()> {
 
 		count += 1;
 
+		if (count % 5) == 0 {
+			sync(sync_db_name);
+		}
+
 		std::thread::sleep(std::time::Duration::from_secs(5));
 	}
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct Example {
+	table: String,
+	pk: Vec<u8>,
+	cid: String,
+	val: Val,
+	col_version: i64,
+	db_version: i64,
+	site_id: Vec<u8>,
+	cl: i64,
+	seq: i64,
+}
+
+fn sync(db_name: &str) {
+	let conn = match get_db_connection(&String::from(db_name)) {
+		Ok(conn) => conn,
+		Err(e) => panic!("Error: {}", e),
+	};
+
+	let mut stmt = match conn.prepare("SELECT * FROM crsql_changes") {
+		Ok(stmt) => stmt,
+		Err(e) => panic!("Error: {}", e),
+	};
+
+	let rows_iter = from_rows::<Example>(stmt.query([]).unwrap());
+
+	let changes = rows_iter.collect::<Vec<_>>();
+
+	println!("Changes: {:?}", changes);
 }
