@@ -395,6 +395,51 @@ mod tests {
 	}
 
 	#[test]
+	fn test_sync_update() {
+		let mut conn_a = setup_connection();
+		let mut conn_b = setup_connection();
+
+		insert_todo(
+			&Todo {
+				id: 1,
+				label: String::from("Test A1"),
+			},
+			&conn_a,
+		)
+		.unwrap();
+
+		let db_b_sync_info = fetch_db_info(&conn_b).unwrap();
+
+		let changes_a_to_b = fetch_db_changes(&db_b_sync_info, &conn_a).unwrap();
+
+		insert_db_changes(&changes_a_to_b, &mut conn_b).unwrap();
+
+		update_todo(
+			&Todo {
+				id: 1,
+				label: String::from("Test A1 Updated in A Again"),
+			},
+			&conn_a,
+		)
+		.unwrap();
+
+		let db_a_sync_info = fetch_db_info(&conn_a).unwrap();
+		let db_b_sync_info = fetch_db_info(&conn_b).unwrap();
+
+		let changes_a_to_b = fetch_db_changes(&db_b_sync_info, &conn_a).unwrap();
+		let changes_b_to_a = fetch_db_changes(&db_a_sync_info, &conn_b).unwrap();
+
+		insert_db_changes(&changes_a_to_b, &mut conn_b).unwrap();
+		insert_db_changes(&changes_b_to_a, &mut conn_a).unwrap();
+
+		let todo_a = fetch_todo_by_id(1, &conn_a).unwrap();
+		let todo_b = fetch_todo_by_id(1, &conn_a).unwrap();
+
+		assert_eq!(todo_a.label, "Test A1 Updated in A Again");
+		assert_eq!(todo_b.label, "Test A1 Updated in A Again");
+	}
+
+	#[test]
 	fn test_sync_update_conflicting() {
 		let mut conn_a = setup_connection();
 		let mut conn_b = setup_connection();
