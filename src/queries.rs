@@ -254,6 +254,7 @@ pub fn fetch_db_changes(db_sync_info: &DbSyncInfo, conn: &Connection) -> Result<
 	Ok(changes)
 }
 
+// TODO Extract tests to a separate file
 #[cfg(test)]
 mod tests {
 	use crate::queries::{
