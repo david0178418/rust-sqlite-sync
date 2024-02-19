@@ -125,9 +125,16 @@ pub struct DbSyncInfo {
 pub fn fetch_db_info(conn: &Connection) -> Result<DbSyncInfo> {
 	conn.prepare(
 		"
-			SELECT
-				crsql_db_version() as db_version,
-				Hex(crsql_site_id()) as site_id;
+		SELECT
+			COALESCE(
+				(
+					select max(db_version)
+					from crsql_changes
+					where site_id is null
+				),
+				0
+			) AS db_version,
+			HEX(crsql_site_id()) AS site_id;
 		",
 	)?
 	.query_row([], |row| {
@@ -226,10 +233,7 @@ pub fn fetch_db_changes(db_sync_info: &DbSyncInfo, conn: &Connection) -> Result<
 			val,
 			col_version,
 			db_version,
-			COALESCE(
-				site_id,
-				crsql_site_id()
-			) as site_id,
+			site_id,
 			cl,
 			seq
 		FROM crsql_changes
@@ -252,7 +256,6 @@ pub fn fetch_db_changes(db_sync_info: &DbSyncInfo, conn: &Connection) -> Result<
 
 #[cfg(test)]
 mod tests {
-
 	use crate::queries::{
 		fetch_db_changes, fetch_db_info, fetch_todo_by_id, fetch_todos, insert_db_changes,
 		insert_todo, load_cr_extention, update_todo, Todo,
@@ -268,8 +271,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_sync() {
-		let mut conn_a = setup_connection();
+	fn test_sync_new_items_a_to_b() {
+		let conn_a = setup_connection();
 		let mut conn_b = setup_connection();
 
 		insert_todo(
@@ -295,6 +298,22 @@ mod tests {
 		let todos_b = fetch_todos(&conn_b).unwrap();
 
 		assert_eq!(todos_b.len(), 1);
+	}
+
+	#[test]
+	fn test_sync_new_items_a_b_c() {
+		let mut conn_a = setup_connection();
+		let mut conn_b = setup_connection();
+		let mut conn_c = setup_connection();
+
+		insert_todo(
+			&Todo {
+				id: 1,
+				label: String::from("Test A1"),
+			},
+			&conn_a,
+		)
+		.unwrap();
 
 		insert_todo(
 			&Todo {
@@ -305,31 +324,127 @@ mod tests {
 		)
 		.unwrap();
 
-		let db_b_sync_info = fetch_db_info(&conn_a).unwrap();
-		let changes_b = fetch_db_changes(&db_b_sync_info, &conn_b).unwrap();
+		let db_a_sync_info = fetch_db_info(&conn_a).unwrap();
+		let db_b_sync_info = fetch_db_info(&conn_b).unwrap();
+		let db_c_sync_info = fetch_db_info(&conn_c).unwrap();
 
-		insert_db_changes(&changes_b, &mut conn_a).unwrap();
+		let changes_a_to_b = fetch_db_changes(&db_b_sync_info, &conn_a).unwrap();
+		let changes_a_to_c = fetch_db_changes(&db_c_sync_info, &conn_a).unwrap();
+		let changes_b_to_a = fetch_db_changes(&db_a_sync_info, &conn_b).unwrap();
+		let changes_b_to_c = fetch_db_changes(&db_c_sync_info, &conn_b).unwrap();
+
+		insert_db_changes(&changes_b_to_a, &mut conn_a).unwrap();
+		insert_db_changes(&changes_a_to_b, &mut conn_b).unwrap();
+		insert_db_changes(&changes_a_to_c, &mut conn_c).unwrap();
+		insert_db_changes(&changes_b_to_c, &mut conn_c).unwrap();
 
 		let todos_a = fetch_todos(&conn_a).unwrap();
+		let todos_b = fetch_todos(&conn_b).unwrap();
+		let todos_c = fetch_todos(&conn_c).unwrap();
 
 		assert_eq!(todos_a.len(), 2);
+		assert_eq!(todos_b.len(), 2);
+		assert_eq!(todos_c.len(), 2);
+	}
 
-		update_todo(
+	#[test]
+	fn test_sync_a_b_c() {
+		let mut conn_a = setup_connection();
+		let mut conn_b = setup_connection();
+		let mut conn_c = setup_connection();
+
+		insert_todo(
 			&Todo {
 				id: 1,
-				label: String::from("Test A1 Updated from B"),
+				label: String::from("Test A1"),
+			},
+			&conn_a,
+		)
+		.unwrap();
+
+		insert_todo(
+			&Todo {
+				id: 2,
+				label: String::from("Test B1"),
 			},
 			&conn_b,
 		)
 		.unwrap();
 
 		let db_a_sync_info = fetch_db_info(&conn_a).unwrap();
-		let changes_b = fetch_db_changes(&db_a_sync_info, &conn_b).unwrap();
+		let db_b_sync_info = fetch_db_info(&conn_b).unwrap();
+		let db_c_sync_info = fetch_db_info(&conn_c).unwrap();
 
-		insert_db_changes(&changes_b, &mut conn_a).unwrap();
+		let changes_a_to_b = fetch_db_changes(&db_b_sync_info, &conn_a).unwrap();
+		let changes_a_to_c = fetch_db_changes(&db_c_sync_info, &conn_a).unwrap();
+		let changes_b_to_a = fetch_db_changes(&db_a_sync_info, &conn_b).unwrap();
+		let changes_b_to_c = fetch_db_changes(&db_c_sync_info, &conn_b).unwrap();
 
-		let first_todo = fetch_todo_by_id(1, &conn_a).unwrap();
+		insert_db_changes(&changes_b_to_a, &mut conn_a).unwrap();
+		insert_db_changes(&changes_a_to_b, &mut conn_b).unwrap();
+		insert_db_changes(&changes_a_to_c, &mut conn_c).unwrap();
+		insert_db_changes(&changes_b_to_c, &mut conn_c).unwrap();
 
-		assert_eq!(first_todo.label, "Test A1 Updated from B");
+		let todos_a = fetch_todos(&conn_a).unwrap();
+		let todos_b = fetch_todos(&conn_b).unwrap();
+		let todos_c = fetch_todos(&conn_c).unwrap();
+
+		assert_eq!(todos_a.len(), 2);
+		assert_eq!(todos_b.len(), 2);
+		assert_eq!(todos_c.len(), 2);
+	}
+
+	#[test]
+	fn test_sync_update_conflicting() {
+		let mut conn_a = setup_connection();
+		let mut conn_b = setup_connection();
+
+		insert_todo(
+			&Todo {
+				id: 1,
+				label: String::from("Test A1"),
+			},
+			&conn_a,
+		)
+		.unwrap();
+
+		let db_b_sync_info = fetch_db_info(&conn_b).unwrap();
+
+		let changes_a_to_b = fetch_db_changes(&db_b_sync_info, &conn_a).unwrap();
+
+		insert_db_changes(&changes_a_to_b, &mut conn_b).unwrap();
+
+		update_todo(
+			&Todo {
+				id: 1,
+				label: String::from("Test A1 Updated in A Again"),
+			},
+			&conn_a,
+		)
+		.unwrap();
+
+		update_todo(
+			&Todo {
+				id: 1,
+				label: String::from("Test A1 Updated in B"),
+			},
+			&conn_b,
+		)
+		.unwrap();
+
+		let db_a_sync_info = fetch_db_info(&conn_a).unwrap();
+		let db_b_sync_info = fetch_db_info(&conn_b).unwrap();
+
+		let changes_a_to_b = fetch_db_changes(&db_b_sync_info, &conn_a).unwrap();
+		let changes_b_to_a = fetch_db_changes(&db_a_sync_info, &conn_b).unwrap();
+
+		insert_db_changes(&changes_a_to_b, &mut conn_b).unwrap();
+		insert_db_changes(&changes_b_to_a, &mut conn_a).unwrap();
+
+		let todo_a = fetch_todo_by_id(1, &conn_a).unwrap();
+		let todo_b = fetch_todo_by_id(1, &conn_a).unwrap();
+
+		assert_eq!(todo_a.label, "Test A1 Updated in B");
+		assert_eq!(todo_b.label, "Test A1 Updated in B");
 	}
 }
