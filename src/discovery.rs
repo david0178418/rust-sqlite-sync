@@ -24,8 +24,7 @@ pub fn query(args: Vec<String>) {
 		match event {
 			ServiceEvent::ServiceResolved(info) => {
 				println!(
-					"At {:?}:\n\tResolved a new service: {}\n\thost: {}\n\tport: {}\n\tIP: {:?}\n\tTXT properties: {:?}",
-					now.elapsed(),
+					"Resolved a new service: {}\n\thost: {}\n\tport: {}\n\tIP: {:?}\n\tTXT properties: {:?}",
 					info.get_fullname(),
 					info.get_hostname(),
 					info.get_port(),
