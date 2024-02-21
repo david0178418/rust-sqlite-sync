@@ -1,5 +1,5 @@
 use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent, ServiceInfo};
-use std::{thread, time::Duration};
+use std::{collections::HashMap, thread, time::Duration};
 
 // from https://github.com/keepsimple1/mdns-sd/blob/4d719a3a47152b634a0314bfd9041690772b6e29/examples/query.rs
 
@@ -31,6 +31,20 @@ pub fn query(args: Vec<String>) {
 					info.get_addresses(),
 					info.get_properties(),
 				);
+
+				let connection_string = format!(
+					"{}:{}",
+					info.get_addresses().iter().next().unwrap(),
+					info.get_port(),
+				);
+
+				let resp = reqwest::blocking::get(format!("http://{}/api/test", connection_string))
+					.unwrap()
+					.json::<HashMap<String, String>>()
+					.unwrap();
+				println!("Response from {}: {:#?}", connection_string, resp);
+
+				// http call to connection_string
 			},
 			other_event => {
 				println!("At {:?} : {:?}", now.elapsed(), &other_event);
@@ -69,7 +83,7 @@ pub fn register(args: Vec<String>) {
 	// If the caller knows specific addrs to use, then assign the addrs here.
 	let my_addrs = "";
 	let service_hostname = "mdns-example.local.";
-	let port = 3456;
+	let port = 3000;
 
 	// The key string in TXT properties is case insensitive. Only the first
 	// (key, val) pair will take effect.
