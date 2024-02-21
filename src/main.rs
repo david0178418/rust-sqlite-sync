@@ -51,7 +51,7 @@ fn main() {
 		});
 	} else {
 		println!("Running as responder");
-		register(args[1..].to_vec().clone());
+		register(&service, 3000);
 
 		loop {
 			println!("Responder is running");
