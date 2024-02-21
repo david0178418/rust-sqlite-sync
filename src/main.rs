@@ -1,6 +1,14 @@
 mod discovery;
 
 use crate::discovery::{query, register};
+use std::{
+	sync::{
+		atomic::{AtomicBool, Ordering},
+		Arc,
+	},
+	thread::{self, sleep},
+	time::Duration,
+};
 
 fn main() {
 	// Require a paramter of either "client" or "responder".
@@ -15,7 +23,26 @@ fn main() {
 
 	if role == "client" {
 		println!("Running as client");
-		query(args[1..].to_vec().clone());
+		let run_flag = Arc::new(AtomicBool::new(true));
+		let run_flag_clone = Arc::clone(&run_flag);
+		println!("Scanning for 5 seconds");
+		let handle = thread::spawn(move || query("_my-hello._tcp.local.", run_flag_clone));
+
+		sleep(Duration::from_secs(5));
+
+		run_flag.store(false, Ordering::SeqCst);
+
+		let peers = handle.join().unwrap();
+
+		peers.iter().for_each(|p| {
+			println!(
+				"Peer: {} - {} - {} - {}",
+				p.hostname,
+				p.port,
+				p.addresses.join(", "),
+				p.name
+			);
+		});
 	} else {
 		println!("Running as responder");
 		register(args[1..].to_vec().clone());

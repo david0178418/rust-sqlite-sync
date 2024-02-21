@@ -1,56 +1,46 @@
 use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent, ServiceInfo};
-use std::{collections::HashMap, thread, time::Duration};
+use std::{
+	sync::{
+		atomic::{AtomicBool, Ordering::Relaxed},
+		Arc,
+	},
+	thread,
+	time::Duration,
+};
 
 // from https://github.com/keepsimple1/mdns-sd/blob/4d719a3a47152b634a0314bfd9041690772b6e29/examples/query.rs
 
-pub fn query(args: Vec<String>) {
+#[derive(Debug)]
+pub struct PeerInfo {
+	pub name: String,
+	pub hostname: String,
+	pub port: u16,
+	pub addresses: Vec<String>,
+}
+
+// '_my-hello._udp.local.'
+pub fn query(service_type: &str, run_flag: Arc<AtomicBool>) -> Vec<PeerInfo> {
 	// Create a daemon
 	let mdns = ServiceDaemon::new().expect("Failed to create daemon");
+	let mut peers = Vec::<PeerInfo>::new();
+	let receiver = mdns.browse(service_type).expect("Failed to browse");
 
-	let mut service_type: String = match args.get(1) {
-		Some(arg) => arg.clone(),
-		None => {
-			print_query_usage();
-			return;
-		},
-	};
+	while let Ok(event) = receiver.recv_timeout(Duration::from_secs(2)) {
+		if let ServiceEvent::ServiceResolved(info) = event {
+			peers.push(PeerInfo {
+				name: info.get_fullname().to_string(),
+				hostname: info.get_hostname().to_string(),
+				port: info.get_port(),
+				addresses: info.get_addresses().iter().map(|a| a.to_string()).collect(),
+			});
+		}
 
-	// Browse for a service type.
-	service_type.push_str(".local.");
-	let receiver = mdns.browse(&service_type).expect("Failed to browse");
-
-	let now = std::time::Instant::now();
-	while let Ok(event) = receiver.recv() {
-		match event {
-			ServiceEvent::ServiceResolved(info) => {
-				println!(
-					"Resolved a new service: {}\n\thost: {}\n\tport: {}\n\tIP: {:?}\n\tTXT properties: {:?}",
-					info.get_fullname(),
-					info.get_hostname(),
-					info.get_port(),
-					info.get_addresses(),
-					info.get_properties(),
-				);
-
-				let connection_string = format!(
-					"{}:{}",
-					info.get_addresses().iter().next().unwrap(),
-					info.get_port(),
-				);
-
-				let resp = reqwest::blocking::get(format!("http://{}/api/test", connection_string))
-					.unwrap()
-					.json::<HashMap<String, String>>()
-					.unwrap();
-				println!("Response from {}: {:#?}", connection_string, resp);
-
-				// http call to connection_string
-			},
-			other_event => {
-				println!("At {:?} : {:?}", now.elapsed(), &other_event);
-			},
+		if !run_flag.load(Relaxed) {
+			break;
 		}
 	}
+
+	peers
 }
 
 pub fn register(args: Vec<String>) {
@@ -67,14 +57,12 @@ pub fn register(args: Vec<String>) {
 	let service_type = match args.get(1) {
 		Some(arg) => format!("{}.local.", arg),
 		None => {
-			print_register_usage();
 			return;
 		},
 	};
 	let instance_name = match args.get(2) {
 		Some(arg) => arg,
 		None => {
-			print_register_usage();
 			return;
 		},
 	};
@@ -128,21 +116,4 @@ pub fn register(args: Vec<String>) {
 			}
 		}
 	}
-}
-
-fn print_register_usage() {
-	println!("Usage:");
-	println!("cargo run register <service_type> <instance_name> [--unregister]");
-	println!("Options:");
-	println!("--unregister: automatically unregister after 2 seconds\n");
-	println!("For example:");
-	println!("cargo run register _my-hello._udp test1");
-}
-
-fn print_query_usage() {
-	println!("Usage: cargo run query <service_type_without_domain_postfix>");
-	println!("Example: ");
-	println!("cargo run query _my-service._udp\n");
-	println!("You can also do a meta-query per RFC 6763 to find which services are available:");
-	println!("cargo run query _services._dns-sd._udp");
 }
