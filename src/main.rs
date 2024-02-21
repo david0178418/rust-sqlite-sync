@@ -1,6 +1,6 @@
 mod discovery;
 
-use crate::discovery::{query, register};
+use crate::discovery::{query, register, MDnsService};
 use std::{
 	sync::{
 		atomic::{AtomicBool, Ordering},
@@ -15,6 +15,12 @@ fn main() {
 	let args: Vec<String> = std::env::args().collect();
 	let bar = String::from("<blank>");
 	let role = args.get(1).unwrap_or(&bar);
+	// let service_type = "_my-hello._tcp.local.";
+	let service = MDnsService {
+		instance_name: "test1".to_string(),
+		service_name: "my-hello".to_string(),
+		protocol: "tcp".to_string(),
+	};
 
 	if role != "client" && role != "responder" {
 		println!("Must provide a valid role 'client' or 'responder''");
@@ -26,7 +32,7 @@ fn main() {
 		let run_flag = Arc::new(AtomicBool::new(true));
 		let run_flag_clone = Arc::clone(&run_flag);
 		println!("Scanning for 5 seconds");
-		let handle = thread::spawn(move || query("_my-hello._tcp.local.", run_flag_clone));
+		let handle = thread::spawn(move || query(&service, run_flag_clone));
 
 		sleep(Duration::from_secs(5));
 

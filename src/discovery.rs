@@ -1,5 +1,6 @@
 use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent, ServiceInfo};
 use std::{
+	fmt,
 	sync::{
 		atomic::{AtomicBool, Ordering::Relaxed},
 		Arc,
@@ -18,12 +19,30 @@ pub struct PeerInfo {
 	pub addresses: Vec<String>,
 }
 
-// '_my-hello._udp.local.'
-pub fn query(service_type: &str, run_flag: Arc<AtomicBool>) -> Vec<PeerInfo> {
+pub struct MDnsService {
+	pub instance_name: String,
+	pub service_name: String,
+	pub protocol: String,
+}
+
+impl fmt::Display for MDnsService {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(
+			f,
+			"{}._{}._{}.local.",
+			self.instance_name, self.service_name, self.protocol
+		)
+	}
+}
+
+// test1._my-hello._udp.local.
+pub fn query(service_type: &MDnsService, run_flag: Arc<AtomicBool>) -> Vec<PeerInfo> {
 	// Create a daemon
 	let mdns = ServiceDaemon::new().expect("Failed to create daemon");
 	let mut peers = Vec::<PeerInfo>::new();
-	let receiver = mdns.browse(service_type).expect("Failed to browse");
+	let receiver = mdns
+		.browse(&service_type.to_string())
+		.expect("Failed to browse");
 
 	while let Ok(event) = receiver.recv_timeout(Duration::from_secs(2)) {
 		if let ServiceEvent::ServiceResolved(info) = event {
