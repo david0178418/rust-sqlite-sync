@@ -1,4 +1,6 @@
 /target
+.lapce
+.vscode
 *.db
 *.zip
 *.temp.*
