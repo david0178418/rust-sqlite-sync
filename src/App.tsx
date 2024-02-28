@@ -4,21 +4,28 @@ import {
 	Button, Container, Typography,
 } from '@mui/material';
 
+interface Test {
+	foo: string;
+}
+
 function App() {
-	const [greetMsg, setGreetMsg] = useState('');
+	const [greetMsg, setGreetMsg] = useState<Test | null>(null);
+	const [scanning, setScanning] = useState(false);
 
 	async function greet() {
+		setScanning(true);
 		// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 		setGreetMsg(await invoke('greet', { name: 'Foo' }));
+		setScanning(false);
 	}
 
 	return (
 		<Container>
-			<Button onClick={greet}>
-				Greet
+			<Button disabled={scanning} onClick={greet}>
+				{scanning ? 'Scanning...' : 'Scan'}
 			</Button>
 
-			<Typography>{greetMsg}</Typography>
+			<Typography>{greetMsg?.foo}</Typography>
 		</Container>
 	);
 }

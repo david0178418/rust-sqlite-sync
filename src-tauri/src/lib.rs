@@ -1,10 +1,17 @@
 use std::{thread::sleep, time::Duration};
 
+#[derive(serde::Serialize)]
+struct Test {
+	foo: String,
+}
+
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command(async)]
-fn greet(name: &str) -> String {
-	sleep(Duration::from_secs(5));
-	format!("Hello, {}! You've been greeted from Rust!", name)
+fn greet(name: &str) -> Result<Test, String> {
+	sleep(Duration::from_secs(1));
+	Ok(Test {
+		foo: name.to_string(),
+	})
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
