@@ -1,3 +1,4 @@
+/node_modules
 /target
 .lapce
 .vscode
@@ -5,3 +6,4 @@
 *.zip
 *.temp.*
 *.notes.*
+dist
