@@ -1,7 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useState } from 'react';
 import {
-	Button, Container, Typography,
+	Button,
+	Container,
+	Typography,
 } from '@mui/material';
 
 interface Test {
