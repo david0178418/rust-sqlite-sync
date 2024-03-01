@@ -32,6 +32,7 @@ pub async fn query(service: &MDnsService) -> Option<PeerInfo> {
 	let receiver = mdns.browse(&service.to_string()).expect("Failed to browse");
 
 	if let Ok(ServiceEvent::ServiceResolved(info)) = receiver.recv_timeout(Duration::from_secs(2)) {
+		println!("Found service: {}", info.get_fullname());
 		return Some(PeerInfo {
 			name: info.get_fullname().to_string(),
 			hostname: info.get_hostname().to_string(),
