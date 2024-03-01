@@ -27,8 +27,8 @@ fn broadcast(name: MDnsService) -> Result<(), String> {
 #[tauri::command(async)]
 async fn scan() -> Option<PeerInfo> {
 	let service = MDnsService {
-		service_name: "".to_string(),
-		instance_name: "test".to_string(),
+		service_name: "test".to_string(),
+		instance_name: "".to_string(),
 		protocol: "tcp".to_string(),
 	};
 
