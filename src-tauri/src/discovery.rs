@@ -41,6 +41,8 @@ pub async fn query(service: &MDnsService) -> Option<PeerInfo> {
 		});
 	}
 
+	println!("No service found: {}", &service.to_string());
+
 	None
 }
 
