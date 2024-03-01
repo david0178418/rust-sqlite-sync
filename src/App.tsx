@@ -17,7 +17,7 @@ function App() {
 	async function greet() {
 		setScanning(true);
 		// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-		setGreetMsg(await invoke('greet', { name: 'Foo' }));
+		setGreetMsg(await invoke('scan'));
 		setScanning(false);
 	}
 
@@ -27,7 +27,7 @@ function App() {
 				{scanning ? 'Scanning...' : 'Scan'}
 			</Button>
 
-			<Typography>{greetMsg?.foo}</Typography>
+			<Typography>{JSON.stringify(greetMsg)}</Typography>
 		</Container>
 	);
 }

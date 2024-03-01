@@ -1,7 +1,7 @@
 mod discovery;
 
 use actix_web::{get, App, HttpResponse, HttpServer, Responder};
-use discovery::{register, MDnsService};
+use discovery::{query, register, MDnsService, PeerInfo};
 use std::thread::spawn;
 use std::{
 	io::Error,
@@ -24,9 +24,15 @@ fn broadcast(name: MDnsService) -> Result<(), String> {
 	}
 }
 
-#[tauri::command]
-fn get_port(port: tauri::State<Port>) -> u16 {
-	port.0
+#[tauri::command(async)]
+async fn scan() -> Option<PeerInfo> {
+	let service = MDnsService {
+		service_name: "".to_string(),
+		instance_name: "test".to_string(),
+		protocol: "tcp".to_string(),
+	};
+
+	query(&service).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -58,7 +64,7 @@ pub fn run() {
 	tauri::Builder::default()
 		.manage(Port(port))
 		.plugin(tauri_plugin_shell::init())
-		.invoke_handler(tauri::generate_handler![broadcast, get_port])
+		.invoke_handler(tauri::generate_handler![broadcast, scan])
 		.run(tauri::generate_context!())
 		.expect("error while running tauri application");
 }

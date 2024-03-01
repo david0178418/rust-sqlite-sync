@@ -1,13 +1,6 @@
 use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent, ServiceInfo};
 use serde::{Deserialize, Serialize};
-use std::{
-	fmt,
-	sync::{
-		atomic::{AtomicBool, Ordering::Relaxed},
-		Arc,
-	},
-	time::Duration,
-};
+use std::{fmt, time::Duration};
 
 // from https://github.com/keepsimple1/mdns-sd/blob/4d719a3a47152b634a0314bfd9041690772b6e29/examples/query.rs
 
@@ -32,34 +25,22 @@ impl fmt::Display for MDnsService {
 	}
 }
 
-pub async fn query(
-	service: &MDnsService,
-	terminate_flag: Option<Arc<AtomicBool>>,
-) -> Vec<PeerInfo> {
+pub async fn query(service: &MDnsService) -> Option<PeerInfo> {
 	// Create a daemon
 	let mdns = ServiceDaemon::new().expect("Failed to create daemon");
-	let mut peers = Vec::<PeerInfo>::new();
 	println!("Browsing for service: {}", &service.to_string());
 	let receiver = mdns.browse(&service.to_string()).expect("Failed to browse");
 
-	while let Ok(event) = receiver.recv_timeout(Duration::from_secs(2)) {
-		if let ServiceEvent::ServiceResolved(info) = event {
-			peers.push(PeerInfo {
-				name: info.get_fullname().to_string(),
-				hostname: info.get_hostname().to_string(),
-				port: info.get_port(),
-				addresses: info.get_addresses().iter().map(|a| a.to_string()).collect(),
-			});
-		}
-
-		if let Some(terminate) = terminate_flag.as_ref() {
-			if terminate.load(Relaxed) {
-				break;
-			}
-		}
+	if let Ok(ServiceEvent::ServiceResolved(info)) = receiver.recv_timeout(Duration::from_secs(2)) {
+		return Some(PeerInfo {
+			name: info.get_fullname().to_string(),
+			hostname: info.get_hostname().to_string(),
+			port: info.get_port(),
+			addresses: info.get_addresses().iter().map(|a| a.to_string()).collect(),
+		});
 	}
 
-	peers
+	None
 }
 
 pub fn register(service: &MDnsService, port: u16) {
