@@ -12,15 +12,22 @@ name = "tauri_app_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0.0-beta", features = [] }
+tauri-build = { version = "2.0.0-beta.8", features = [] }
 
 [dependencies]
-tauri = { version = "2.0.0-beta", features = [] }
-tauri-plugin-shell = "2.0.0-beta"
+futures = "0.3.30"
+libp2p = {version = "0.53.2", features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic"] }
+libp2p-mdns = "0.45.1"
+rusqlite = { version = "0.31.0", features = ["load_extension", "bundled"] }
 serde = { version = "1", features = ["derive"] }
+serde_derive = "1.0.197"
 serde_json = "1"
-mdns-sd = "0.10.4"
-actix-web = "4.5.1"
+serde_rusqlite = "0.35.0"
+tauri = { version = "=2.0.0-beta.10", features = [] }
+tauri-plugin-shell = "=2.0.0-beta.2"
+tokio = { version = "1.36", features = ["full"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zeroconf = "0.14.1"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

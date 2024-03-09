@@ -1,6 +1,11 @@
 use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceEvent, ServiceInfo};
 use serde::{Deserialize, Serialize};
-use std::{fmt, time::Duration};
+use std::{
+	collections::{HashMap, HashSet},
+	fmt,
+	net::IpAddr,
+	time::Duration,
+};
 
 // from https://github.com/keepsimple1/mdns-sd/blob/4d719a3a47152b634a0314bfd9041690772b6e29/examples/query.rs
 
@@ -9,7 +14,7 @@ pub struct PeerInfo {
 	pub name: String,
 	pub hostname: String,
 	pub port: u16,
-	pub addresses: Vec<String>,
+	pub addresses: HashSet<IpAddr>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -25,25 +30,30 @@ impl fmt::Display for MDnsService {
 	}
 }
 
-pub async fn query(service: &MDnsService) -> Option<PeerInfo> {
-	// Create a daemon
+pub async fn query() -> HashMap<String, PeerInfo> {
 	let mdns = ServiceDaemon::new().expect("Failed to create daemon");
-	println!("Browsing for service: {}", &service.to_string());
-	let receiver = mdns.browse(&service.to_string()).expect("Failed to browse");
 
-	if let Ok(ServiceEvent::ServiceResolved(info)) = receiver.recv_timeout(Duration::from_secs(2)) {
-		println!("Found service: {}", info.get_fullname());
-		return Some(PeerInfo {
-			name: info.get_fullname().to_string(),
-			hostname: info.get_hostname().to_string(),
-			port: info.get_port(),
-			addresses: info.get_addresses().iter().map(|a| a.to_string()).collect(),
-		});
+	let receiver = mdns
+		.browse("_my-app._tcp.local.")
+		.expect("Failed to browse");
+
+	let peers = HashMap::new();
+
+	while let Ok(event) = receiver.recv_timeout(Duration::from_secs(2)) {
+		if let ServiceEvent::ServiceResolved(info) = event {
+			peers.insert(
+				info.get_fullname().to_string(),
+				PeerInfo {
+					name: info.get_fullname().to_string(),
+					addresses: info.get_addresses().clone(),
+					hostname: info.get_hostname().to_string(),
+					port: info.get_port(),
+				},
+			);
+		}
 	}
 
-	println!("No service found: {}", &service.to_string());
-
-	None
+	peers
 }
 
 pub fn register(service: &MDnsService, port: u16) {
