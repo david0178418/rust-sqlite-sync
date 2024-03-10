@@ -129,6 +129,17 @@ impl Foo {
 	}
 
 	#[allow(unused)]
+	pub fn delete_todo(&self, id: &String) -> Result<()> {
+		match self
+			.connection
+			.execute("DELETE FROM todos WHERE id = ?1", params![id])
+		{
+			Ok(_) => Ok(()),
+			Err(e) => panic!("Error: {}", e),
+		}
+	}
+
+	#[allow(unused)]
 	pub fn update_todo(&self, todo: &Todo) -> Result<()> {
 		match self.connection.execute(
 			"
@@ -375,6 +386,52 @@ mod tests {
 
 		assert_eq!(todo_a.label, "Test A1 Updated in A Again");
 		assert_eq!(todo_b.label, "Test A1 Updated in A Again");
+	}
+
+	#[test]
+	fn test_sync_delete() {
+		let foo_a = Foo::new(None).unwrap();
+		let mut foo_b = Foo::new(None).unwrap();
+
+		foo_a
+			.insert_todo(&NewTodo {
+				label: String::from("Test A1"),
+			})
+			.unwrap();
+
+		let foo_id = foo_a
+			.insert_todo(&NewTodo {
+				label: String::from("Test A2"),
+			})
+			.unwrap();
+
+		foo_a
+			.insert_todo(&NewTodo {
+				label: String::from("Test A2"),
+			})
+			.unwrap();
+
+		let changes_a_to_b = foo_a.fetch_db_changes().unwrap();
+
+		foo_b.insert_db_changes(&changes_a_to_b).unwrap();
+
+		let todos_a = foo_a.fetch_todos().unwrap();
+		let todos_b = foo_b.fetch_todos().unwrap();
+
+		assert_eq!(todos_a.len(), 3);
+		assert_eq!(todos_b.len(), 3);
+
+		foo_a.delete_todo(&foo_id).unwrap();
+
+		let changes_a_to_b = foo_a.fetch_db_changes().unwrap();
+
+		foo_b.insert_db_changes(&changes_a_to_b).unwrap();
+
+		let todos_a = foo_a.fetch_todos().unwrap();
+		let todos_b = foo_b.fetch_todos().unwrap();
+
+		assert_eq!(todos_a.len(), 2);
+		assert_eq!(todos_b.len(), 2);
 	}
 
 	#[test]
