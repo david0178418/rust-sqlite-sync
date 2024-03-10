@@ -3,9 +3,16 @@ use rusqlite::{named_params, params, Connection, Result};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_rusqlite::from_rows;
+use uuid::Uuid;
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct NewTodo {
+	pub label: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Todo {
-	pub id: i64,
+	pub id: String,
 	pub label: String,
 }
 
@@ -89,7 +96,7 @@ impl Foo {
 	}
 
 	#[allow(unused)]
-	pub fn fetch_todo_by_id(&self, id: i64) -> Result<Todo> {
+	pub fn fetch_todo_by_id(&self, id: &String) -> Result<Todo> {
 		self.connection
 			.query_row("SELECT * FROM todos WHERE id = ?1", params![id], |row| {
 				Ok(Todo {
@@ -100,7 +107,9 @@ impl Foo {
 	}
 
 	#[allow(unused)]
-	pub fn insert_todo(&self, todo: &Todo) -> Result<()> {
+	pub fn insert_todo(&self, todo: &NewTodo) -> Result<String> {
+		let new_id = Uuid::now_v7().to_string();
+
 		match self.connection.execute(
 			"
 				INSERT INTO todos
@@ -112,9 +121,9 @@ impl Foo {
 					?2
 				)
 			",
-			params![todo.id, todo.label],
+			params![new_id, todo.label],
 		) {
-			Ok(_) => Ok(()),
+			Ok(_) => Ok(new_id),
 			Err(e) => panic!("Error: {}", e),
 		}
 	}
@@ -171,7 +180,8 @@ impl Foo {
 						:site_id,
 						:cl,
 						:seq
-					)
+					);
+					select crsql_finalize();
 				",
 				named_params! {
 					":table": change.table,
@@ -230,7 +240,7 @@ impl Foo {
 // TODO Extract tests to a separate file
 #[cfg(test)]
 mod tests {
-	use crate::queries::{Foo, Todo};
+	use crate::queries::{Foo, NewTodo, Todo};
 
 	#[test]
 	fn test_sync_new_items_a_to_b() {
@@ -238,8 +248,7 @@ mod tests {
 		let mut foo_b = Foo::new(None).unwrap();
 
 		foo_a
-			.insert_todo(&Todo {
-				id: 1,
+			.insert_todo(&NewTodo {
 				label: String::from("Test A1"),
 			})
 			.unwrap();
@@ -266,15 +275,13 @@ mod tests {
 		let mut foo_c = Foo::new(None).unwrap();
 
 		foo_a
-			.insert_todo(&Todo {
-				id: 1,
+			.insert_todo(&NewTodo {
 				label: String::from("Test A1"),
 			})
 			.unwrap();
 
 		foo_b
-			.insert_todo(&Todo {
-				id: 2,
+			.insert_todo(&NewTodo {
 				label: String::from("Test B1"),
 			})
 			.unwrap();
@@ -305,15 +312,13 @@ mod tests {
 		let mut foo_c = Foo::new(None).unwrap();
 
 		foo_a
-			.insert_todo(&Todo {
-				id: 1,
+			.insert_todo(&NewTodo {
 				label: String::from("Test A1"),
 			})
 			.unwrap();
 
 		foo_b
-			.insert_todo(&Todo {
-				id: 2,
+			.insert_todo(&NewTodo {
 				label: String::from("Test B1"),
 			})
 			.unwrap();
@@ -342,9 +347,8 @@ mod tests {
 		let mut foo_a = Foo::new(None).unwrap();
 		let mut foo_b = Foo::new(None).unwrap();
 
-		foo_a
-			.insert_todo(&Todo {
-				id: 1,
+		let todo_id = foo_a
+			.insert_todo(&NewTodo {
 				label: String::from("Test A1"),
 			})
 			.unwrap();
@@ -355,7 +359,7 @@ mod tests {
 
 		foo_a
 			.update_todo(&Todo {
-				id: 1,
+				id: todo_id.clone(),
 				label: String::from("Test A1 Updated in A Again"),
 			})
 			.unwrap();
@@ -366,8 +370,8 @@ mod tests {
 		foo_b.insert_db_changes(&changes_a_to_b).unwrap();
 		foo_a.insert_db_changes(&changes_b_to_a).unwrap();
 
-		let todo_a = foo_a.fetch_todo_by_id(1).unwrap();
-		let todo_b = foo_a.fetch_todo_by_id(1).unwrap();
+		let todo_a = foo_a.fetch_todo_by_id(&todo_id).unwrap();
+		let todo_b = foo_b.fetch_todo_by_id(&todo_id).unwrap();
 
 		assert_eq!(todo_a.label, "Test A1 Updated in A Again");
 		assert_eq!(todo_b.label, "Test A1 Updated in A Again");
@@ -378,9 +382,8 @@ mod tests {
 		let mut foo_a = Foo::new(None).unwrap();
 		let mut foo_b = Foo::new(None).unwrap();
 
-		foo_a
-			.insert_todo(&Todo {
-				id: 1,
+		let foo_id = foo_a
+			.insert_todo(&NewTodo {
 				label: String::from("Test A1"),
 			})
 			.unwrap();
@@ -391,14 +394,14 @@ mod tests {
 
 		foo_a
 			.update_todo(&Todo {
-				id: 1,
+				id: foo_id.clone(),
 				label: String::from("Test A1 Updated in A Again"),
 			})
 			.unwrap();
 
 		foo_b
 			.update_todo(&Todo {
-				id: 1,
+				id: foo_id.clone(),
 				label: String::from("Test A1 Updated in B"),
 			})
 			.unwrap();
@@ -409,8 +412,8 @@ mod tests {
 		foo_b.insert_db_changes(&changes_a_to_b).unwrap();
 		foo_a.insert_db_changes(&changes_b_to_a).unwrap();
 
-		let todo_a = foo_a.fetch_todo_by_id(1).unwrap();
-		let todo_b = foo_a.fetch_todo_by_id(1).unwrap();
+		let todo_a = foo_a.fetch_todo_by_id(&foo_id).unwrap();
+		let todo_b = foo_b.fetch_todo_by_id(&foo_id).unwrap();
 
 		assert_eq!(todo_a.label, "Test A1 Updated in B");
 		assert_eq!(todo_b.label, "Test A1 Updated in B");

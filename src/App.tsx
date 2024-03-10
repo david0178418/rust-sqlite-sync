@@ -1,33 +1,42 @@
 import { invoke } from '@tauri-apps/api/core';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
 	Button,
 	Container,
 	Typography,
 } from '@mui/material';
 
-interface Test {
-	foo: string;
-}
-
 function App() {
-	const [greetMsg, setGreetMsg] = useState<Test | null>(null);
-	const [scanning, setScanning] = useState(false);
+	const [todos, setTodos] = useState<any[]>([]);
 
-	async function greet() {
-		setScanning(true);
+	useEffect(() => {
+		(async () => {
+			setTodos(await invoke('get_todos'));
+		})();
+	}, []);
+
+	async function addTodo() {
 		// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-		setGreetMsg(await invoke('scan'));
-		setScanning(false);
+
+		console.log(111);
+
+		await invoke('add_todo', { todo: { label: 'From Tauri!' } });
+		console.log(222);
+
+		const x = await invoke<any[]>('get_todos');
+
+		console.log('x', x);
+
+		setTodos(x);
 	}
 
 	return (
 		<Container>
-			<Button disabled={scanning} onClick={greet}>
-				{scanning ? 'Scanning...' : 'Scan'}
+			<Button onClick={addTodo}>
+				Add Todo
 			</Button>
 
-			<Typography>{JSON.stringify(greetMsg)}</Typography>
+			<Typography>{JSON.stringify(todos)}</Typography>
 		</Container>
 	);
 }

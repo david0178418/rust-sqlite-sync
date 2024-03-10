@@ -4,8 +4,6 @@
 mod queries;
 
 fn main() {
-	println!("Hello, world1!");
-
 	tauri_app_lib::run();
 }
 
