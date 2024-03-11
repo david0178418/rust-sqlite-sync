@@ -18,11 +18,19 @@ fn add_todo(todo: NewTodo) {
 		.unwrap();
 }
 
+#[tauri::command]
+fn delete_todo(id: String) {
+	Foo::new(Some("./foo.db".to_string()))
+		.unwrap()
+		.delete_todo(&id)
+		.unwrap();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
 	tauri::Builder::default()
 		.plugin(tauri_plugin_shell::init())
-		.invoke_handler(tauri::generate_handler![add_todo, get_todos])
+		.invoke_handler(tauri::generate_handler![add_todo, get_todos, delete_todo])
 		.run(tauri::generate_context!())
 		.expect("error while running tauri application");
 }
