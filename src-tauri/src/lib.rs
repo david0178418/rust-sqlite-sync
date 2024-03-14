@@ -155,14 +155,6 @@ async fn build_swarm() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 		.with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
 		.build();
 
-	// let behaviour = swarm.behaviour_mut();
-
-	// let topic_all = gossipsub::IdentTopic::new(TOPIC);
-	// let topic_direct = peer_id_topic(&x);
-
-	// behaviour.gossipsub.subscribe(&topic_all)?;
-	// behaviour.gossipsub.subscribe(&topic_direct)?;
-
 	// Listen on all interfaces and whatever port the OS assigns
 	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
