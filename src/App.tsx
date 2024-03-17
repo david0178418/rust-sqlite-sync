@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useEffect, useState } from 'react';
 import { Delete as DeleteIcon } from '@mui/icons-material';
 import {
@@ -17,6 +18,7 @@ function App() {
 
 	useEffect(() => {
 		refreshTodos();
+		listen('refresh', refreshTodos);
 	}, []);
 
 	return (
