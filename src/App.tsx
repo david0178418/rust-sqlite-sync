@@ -18,7 +18,7 @@ function App() {
 
 	useEffect(() => {
 		refreshTodos();
-		listen('refresh', refreshTodos);
+		listen('client:refresh', refreshTodos);
 	}, []);
 
 	return (

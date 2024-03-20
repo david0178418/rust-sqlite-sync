@@ -7,63 +7,7 @@ pub fn run() {
 	tauri::Builder::default()
 		.plugin(tauri_plugin_shell::init())
 		.invoke_handler(tauri::generate_handler![add_todo, get_todos, delete_todo])
-		.setup(|app| {
-			app.listen("test-event", |_| println!("test event from rust"));
-
-			let app = app.handle().clone();
-
-			spawn(move || {
-				let mut swarm = block_on(async { build_swarm().await.unwrap() });
-
-				#[allow(unused)]
-				let win = app.get_webview_window("main").unwrap();
-
-				loop {
-					block_on(async {
-						select! {
-							event = swarm.select_next_some() => match event {
-								SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
-									for (peer_id, _multiaddr) in list {
-										let behavior = swarm.behaviour_mut();
-										behavior.gossipsub.add_explicit_peer(&peer_id);
-
-										let _ = behavior.gossipsub.publish(
-											peer_id_topic(&peer_id),
-											"Direct message of 'hi'".as_bytes()
-										);
-
-										let _ = behavior.gossipsub
-											.publish(gossipsub::IdentTopic::new(TOPIC), "Hi to all".as_bytes());
-										// let (_x) = swarm.dial(peer_id.clone()).unwrap();
-									}
-								},
-								SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
-									for (peer_id, _multiaddr) in list {
-										println!("mDNS discover peer has expired: {peer_id}");
-										swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-									}
-								},
-								SwarmEvent::NewListenAddr { address, .. } => println!("NewListenAddr: {address:?}"),
-								SwarmEvent::IncomingConnectionError { error, .. } => println!("IncomingConnectionError: {error:?}"),
-								SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Message {
-									propagation_source,
-									message_id,
-									message,
-								})) => println!(
-									"Got message: '{}' with id: {message_id} from peer: {propagation_source}",
-									String::from_utf8_lossy(&message.data),
-								),
-								e => {
-									println!("Unhandled event: {:?}", e);
-								}
-							}
-						}
-					})
-				}
-			});
-
-			Ok(())
-		})
+		.setup(init)
 		.run(tauri::generate_context!())
 		.expect("error while running tauri application");
 }
@@ -101,7 +45,7 @@ use libp2p::{
 	tcp, yamux, PeerId, Swarm,
 };
 use std::{error::Error, thread::spawn, time::Duration};
-use tauri::{async_runtime::block_on, Manager};
+use tauri::{async_runtime::block_on, App, Manager};
 use tokio::{io, select};
 use tracing_subscriber::EnvFilter;
 
@@ -164,4 +108,71 @@ async fn build_swarm() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 fn peer_id_topic(peer_id: &PeerId) -> gossipsub::IdentTopic {
 	println!("peer_id_topic: {:?}", format!("{}-{}", TOPIC, peer_id));
 	gossipsub::IdentTopic::new(format!("{}-{}", TOPIC, peer_id))
+}
+
+fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
+	app.listen("test-event", |_| println!("test event from rust"));
+
+	let app = app.handle().clone();
+
+	spawn(move || {
+		let mut swarm = block_on(async { build_swarm().await.unwrap() });
+
+		#[allow(unused)]
+		let win = app.get_webview_window("main").unwrap();
+
+		app.listen("event", |event| {
+			let _x = event.payload();
+
+			// swarm.behaviour().gossipsub.publish(
+			// 	gossipsub::IdentTopic::new(TOPIC),
+			// 	format!("Event: {}", x).as_bytes(),
+			// );
+		});
+
+		loop {
+			block_on(async {
+				select! {
+					event = swarm.select_next_some() => match event {
+						SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+							for (peer_id, _multiaddr) in list {
+								let behavior = swarm.behaviour_mut();
+								behavior.gossipsub.add_explicit_peer(&peer_id);
+
+								let _ = behavior.gossipsub.publish(
+									peer_id_topic(&peer_id),
+									"Direct message of 'hi'".as_bytes()
+								);
+
+								let _ = behavior.gossipsub
+									.publish(gossipsub::IdentTopic::new(TOPIC), "Hi to all".as_bytes());
+								// let (_x) = swarm.dial(peer_id.clone()).unwrap();
+							}
+						},
+						SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+							for (peer_id, _multiaddr) in list {
+								println!("mDNS discover peer has expired: {peer_id}");
+								swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+							}
+						},
+						SwarmEvent::NewListenAddr { address, .. } => println!("NewListenAddr: {address:?}"),
+						SwarmEvent::IncomingConnectionError { error, .. } => println!("IncomingConnectionError: {error:?}"),
+						SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Message {
+							propagation_source,
+							message_id,
+							message,
+						})) => println!(
+							"Got message: '{}' with id: {message_id} from peer: {propagation_source}",
+							String::from_utf8_lossy(&message.data),
+						),
+						e => {
+							println!("Unhandled event: {:?}", e);
+						}
+					}
+				}
+			})
+		}
+	});
+
+	Ok(())
 }
